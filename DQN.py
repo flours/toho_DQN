@@ -34,7 +34,13 @@ class Agent:
 #        self.output_dim = env.action_space.n
 
         self.q_network = self.ModelCreate()
+        self.q_network2 = self.ModelCreate()
+        self.q_network3 = self.ModelCreate()
+        self.q_network4 = self.ModelCreate()
         self.t_network = self.ModelCreate()
+        self.t_network2 = self.ModelCreate()
+        self.t_network3 = self.ModelCreate()
+        self.t_network4 = self.ModelCreate()
 
         #self.t_network.load_weights("weight.h5") # 初期の重みを考慮する場合
         self.q_network.summary()
@@ -63,13 +69,16 @@ class Agent:
 
         #q_value = self.Predict(state)
         q_value = self.q_network.predict_on_batch(state)
+        q_value = self.q_network2.predict_on_batch(state)
+        q_value = self.q_network3.predict_on_batch(state)
+        q_value = self.q_network4.predict_on_batch(state)
         return np.argmax(q_value)
 
     def Train(self, x_batch, y_batch):
-        return self.q_network.train_on_batch(x_batch, y_batch)
+        return self.q_network.train_on_batch(x_batch.reshape(32,5), y_batch[0]),self.q_network2.train_on_batch(x_batch.reshape(32,5), y_batch[1]),self.q_network3.train_on_batch(x_batch.reshape(32,5), y_batch[2]),self.q_network4.train_on_batch(x_batch.reshape(32,5), y_batch[3])
 
     def Predict(self, x_batch):
-        return self.t_network.predict_on_batch(x_batch)
+        return self.t_network.predict_on_batch(x_batch),self.t_network2.predict_on_batch(x_batch),self.t_network3.predict_on_batch(x_batch),self.t_network4.predict_on_batch(x_batch)
 
     def WeightCopy(self):
         for i in range(5):
@@ -96,17 +105,21 @@ def CreateBatch(agent, replay_memory, batch_size, discount_rate):
     minibatch = random.sample(replay_memory, batch_size)
     state, action, reward, state2, end_flag =  map(np.array, zip(*minibatch))
 
-    x_batch = state
+    x_batch = state.reshape(batch_size,5)
     # この状態の時に各行動をした場合のQ値(y_batch変数はactionそれぞれに対するQ値)を，現在のネットワークで推定
-    y_batch = agent.Predict(state)
+    y_batch = agent.Predict(x_batch)
     # 今のQ値よりももっと高かったら更新
-    agent.max_q = max(agent.max_q, y_batch.max()) # 保存用
+    agent.max_q = max(agent.max_q, y_batch[0].max()) # 保存用
+    agent.max_q = max(agent.max_q, y_batch[1].max()) # 保存用
+    agent.max_q = max(agent.max_q, y_batch[2].max()) # 保存用
+    agent.max_q = max(agent.max_q, y_batch[3].max()) # 保存用
     # 1つ未来における各行動に対するそれぞれのQ値
-    next_q_values = agent.Predict(state2)
+    next_q_values = agent.Predict(state2.reshape(batch_size,5))
 
     for i in range(batch_size):
         # ベルマン方程式 Q(s,a) = r + gamma * max_a Q(s', a')
-        y_batch[i, action[i]] = reward[i] + discount_rate * np.max(next_q_values[i]) * (1 - end_flag[i])
+        for j in range(4):
+            y_batch[j][i, action[i]] = reward[i] + discount_rate * np.max(next_q_values[j][i]) * (1 - end_flag[i])
 
     return x_batch, y_batch
 
@@ -120,6 +133,7 @@ def RewardClipping(reward):
     return np.sign(reward)
 
 def Preprocess(character_data):
+#    print(character_data[0].HP,character_data[1].HP,character_data[2].HP,character_data[3].HP,character_data[4].HP)
     return np.array([character_data[0].HP,character_data[1].HP,character_data[2].HP,character_data[3].HP,character_data[4].HP]).reshape(1,5)
 
 def main():
@@ -137,6 +151,7 @@ def main():
     env=DQVenv()
     agent = Agent(env)
     replay_memory = deque()
+    
 
     # ゲーム再スタート
     for episode in range(n_episode):
@@ -175,10 +190,12 @@ def main():
             #env.render()
         # Q-networkの重みをTarget-networkにコピー
         agent.WeightCopy()
-        if episode != 0 and episode % 1 == 0:
+        if episode != 0 and episode % 1000 == 0:
             agent.t_network.save_weights("weight.h5")
 
         #PrintInfo(episode, episode_reward, epsilon)
+        if episode % 10 ==0:
+	        print("10epi",episode_reward,epsilon)
 
         agent.SaveHistory(episode, episode_reward, epsilon, state2)
 

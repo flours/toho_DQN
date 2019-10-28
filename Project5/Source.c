@@ -13,7 +13,7 @@
 
 
 
-//#define printf //
+#define printf //
 
 char playerName[][5 * 2 + 1] =
 {
