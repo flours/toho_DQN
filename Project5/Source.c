@@ -1319,6 +1319,8 @@ void battle_main(Character* characters, BOOL wait, BOOL disp) {
 					if (wait)_getch();
 					break;
 				}
+
+
 				attack_count++;
 				if (attack_count == 2)
 				{
