@@ -17,9 +17,11 @@ class toho_env:
         self.libc = ctypes.WinDLL("Project5.dll")
         self.x=384*448*3
         self.life_board_size=144*48*3
+        self.score_board_size=144*16*3
 
         self.UBYTE_Array = ctypes.c_ubyte * self.x
         self.Life_Board=ctypes.c_ubyte*self.life_board_size
+        self.Score_Board=ctypes.c_ubyte*self.score_board_size
 
         self.i_arr=[0*self.x]
         self.i_arr_c=self.UBYTE_Array(*self.i_arr)
@@ -35,15 +37,32 @@ class toho_env:
         self.libc.templatematch.restype = ctypes.c_int
         self.libc.templatematch.argtypes = (ctypes.POINTER(ctypes.c_ubyte), ctypes.POINTER(ctypes.c_int), ctypes.POINTER(ctypes.c_int))
 
+        self.libc.capture_score_board.restype = None
+        self.libc.capture_score_board.argtypes = (ctypes.c_ubyte*self.score_board_size, )
+
 
         self.life_board_arr=[0*self.life_board_size]
         self.life_board_arr_c=self.Life_Board(*self.life_board_arr)
+
+        self.score_board_arr=[0*self.score_board_size]
+        self.score_board_arr_c=self.Score_Board(*self.score_board_arr)
+
         self.ch=ch
         self.width=width
         self.height=height
         self.frame_count=0
         self.life=2
         pyautogui.FAILSAFE=False
+
+    def get_score_board(self):
+        self.libc.capture_score_board(self.score_board_arr_c)
+        image=np.ctypeslib.as_array(self.score_board_arr_c).reshape(16,144,3)
+        return image
+
+    def get_life_board(self):
+        self.libc.capture_life_board(self.life_board_arr_c)
+        image=np.ctypeslib.as_array(self.life_board_arr_c).reshape(48*144*3)
+        return image
 
     def press_cursor(self,keys):
         for key in keys:
@@ -68,6 +87,7 @@ class toho_env:
         self.libc.step(action[0],self.i_arr_c,self.reward_pointer,self.life_pointer,self.done_pointer)
         image=np.ctypeslib.as_array(self.i_arr_c).reshape(448,384,3)
         image=cv2.resize(image , (self.width,self.height))
+        image=cv2.cvtColor(image,cv2.COLOR_BGR2GRAY)
         if self.done_pointer.value==1:
             self.press_cursor([])
             pyautogui.keyUp('z')
@@ -140,12 +160,10 @@ class toho_env:
 
     def reset(self,isfirst):
         self.frame_count=0
-        if isfirst:
-            return
-        else:
-            self.GameOverAction()
+        self.GameOverAction()
 
     def GameOverAction(self):
+      print('restarting game..')
       self.press_cursor([])
       pyautogui.keyUp('z')
       self.libc.capture_foreground(self.i_arr_c)
@@ -173,3 +191,8 @@ class toho_env:
         time.sleep(throw_sleep)
         pyautogui.keyUp(input_key)
         time.sleep(out_sleep)
+
+if __name__=='__main__':
+    env=toho_env()
+    while True:
+        print(env.libc.get_score())

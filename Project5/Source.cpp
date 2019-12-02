@@ -136,7 +136,7 @@ void capture_life_board(unsigned char* capture_img)
 	GetWindowRect(hwndFore, &rc_fore);
 
 	int left_top_x = 497;
-	int left_top_y = 149;
+	int left_top_y = 108;
 
 	int size_x = 144;
 	int size_y = 48;
@@ -173,6 +173,58 @@ void capture_life_board(unsigned char* capture_img)
 	return;
 }
 
+
+void capture_score_board(unsigned char* capture_img)
+{
+	HDC     hdc;
+	HWND    hwndDesk;
+	HWND    hwndFore;
+	RECT    rc;
+	RECT    rc_fore;
+	BITMAP  bm;
+	HBITMAP hbmp;
+	HBITMAP hbmpPrev;
+
+
+	int left_top_x = 497;
+	int left_top_y = 108;
+
+	int size_x = 144;
+	int size_y = 16;
+
+
+	hwndDesk = GetDesktopWindow();
+	hwndFore = GetForegroundWindow();
+	GetWindowRect(hwndDesk, &rc);
+	GetWindowRect(hwndFore, &rc_fore);
+
+
+	hdc = CreateCompatibleDC(NULL);
+	hbmp = CreateBackbuffer(size_x, size_y);
+	hbmpPrev = (HBITMAP)SelectObject(hdc, hbmp);
+	HDC winDC = GetWindowDC(hwndDesk);
+	if (winDC == 0) {
+		printf("winDC==0!");
+		return;
+	}
+	BitBlt(hdc, 0, 0, size_x, size_y, winDC, rc_fore.left + left_top_x, rc_fore.top + left_top_y, SRCCOPY);
+
+
+	GetObject(hbmp, sizeof(BITMAP), &bm);
+
+
+	memcpy(capture_img, bm.bmBits, sizeof(unsigned char) * size_x * size_y * 3);
+
+	DeleteDC(hdc);
+	ReleaseDC(hwndDesk, winDC);
+	DeleteObject(hbmp);
+	DeleteObject(hbmpPrev);
+
+
+
+	return;
+}
+
 HBITMAP CreateBackbuffer(int nWidth, int nHeight)
 {
 	LPVOID           lp;
@@ -194,17 +246,17 @@ HBITMAP CreateBackbuffer(int nWidth, int nHeight)
 
 //テンプレートマッチ用画像
 cv::Mat imgs[9];
-cv::Mat mask_imgs[9];
+cv::Mat num_img[10];
+cv::Mat mask_imgs[10];
 void reset() 
 {
-	for (int i = 0; i < 9; i++) {
+	for (int i = 0; i < 10; i++) {
 		cv::Mat mask_orig;
-		char file[] = " _alpha.png";
-		file[0] = i + '1';
-		printf("%s", file);
+		char file[256] = "toho_imgs\\ _alpha.png";
+		file[10] = i + '1';
+		if (i == 9)strcpy(file, "toho_imgs\\10_alpha.png");
 		imgs[i] = cv::imread(file);
 		mask_orig= cv::imread(file,cv::IMREAD_UNCHANGED);
-		printf("%d,channels=%d",i,mask_orig.channels());
 		cv::Mat channels[4];
 		cv::split(mask_orig,channels);
 		std::vector<cv::Mat> tmp_a;
@@ -212,9 +264,20 @@ void reset()
 		tmp_a.push_back(channels[3]);
 		tmp_a.push_back(channels[3]);
 		cv::merge(tmp_a,mask_imgs[i]);
+		cv::imshow(file, imgs[i]);
+		cv::imshow(file, mask_imgs[i]);
 	}
 }
 
+void reset_for_num()
+{
+	for (int i = 0; i < 10; i++) {
+		cv::Mat mask_orig;
+		char file[256] = "numbers\\ .png";
+		file[8] = i + '0';
+		num_img[i] = cv::imread(file);
+	}
+}
 
 
 int before_x=0, before_y=0;
@@ -225,7 +288,6 @@ int templatematch(unsigned char* capture_img, int* loc_x, int* loc_y) {
 	cv::Mat result_img;
 	double maxVal=-9999;
 
-	
 	if (before_x!=0) {
 		int x = before_x;
 		int y = before_y;
@@ -240,7 +302,7 @@ int templatematch(unsigned char* capture_img, int* loc_x, int* loc_y) {
 		before_y = y;
 
 	}
-	for (int i = 1; i < 9; i++) {
+	for (int i = 1; i < 10; i++) {
 		double Val = 0;
 		cv::matchTemplate(img, imgs[i], result_img, cv::TM_CCORR_NORMED,mask_imgs[i]);
 		cv::Point max_pt;
@@ -249,13 +311,64 @@ int templatematch(unsigned char* capture_img, int* loc_x, int* loc_y) {
 			maxVal = Val;
 			loc_x[0] = max_pt.x+before_x;
 			loc_y[0] = max_pt.y+before_y;
+			printf("%d ", i);
 		}
 	}
+	printf("max:%lf\n",maxVal);
 	before_x = loc_x[0]-50;
 	before_y = loc_y[0]-75;
 	return (int)maxVal;
 }
 
+int pow(int x,int y) {
+	int ans = 1;
+	for (int i = 0; i < y; i++) {
+		ans *= x;
+	}
+	return ans;
+}
+
+int get_score() {
+
+	reset_for_num();
+
+	unsigned char img_buffer[16*144*3];
+	capture_score_board(img_buffer);
+
+	cv::Mat img(16, 144, CV_8UC3, img_buffer);
+	cv::Mat rect_img;
+	cv::Mat result_img;
+
+	int score=0;
+	
+	double maxVal = -9999;
+	for (int j = 0; j < 9; j++) {
+		double max_i = 0;
+		int num = 0;
+		for (int i = 0; i < 10; i++) {
+
+			cv::Rect roi(cv::Point(3 + 14 * j, 0), cv::Size(14, 14));
+			rect_img = img(roi);
+
+
+
+			double Val = 0;
+			cv::matchTemplate(rect_img, num_img[i], result_img, cv::TM_CCORR_NORMED);
+
+			cv::Point max_pt;
+			cv::minMaxLoc(result_img, NULL, &Val, NULL, &max_pt);
+
+			if (max_i < Val) {
+				max_i = Val;
+				num = i;
+			}
+
+
+		}
+		score += num * pow(10,9-j);
+	}
+	return score;
+}
 
 int mytemplatematch(unsigned char* capture_img,int *loc_x,int *loc_y) {	
 	cv::Mat img(448, 384, CV_8UC3, capture_img);
@@ -269,7 +382,6 @@ int mytemplatematch(unsigned char* capture_img,int *loc_x,int *loc_y) {
 	for (int imgId = 0; imgId < 9; imgId++) {
 		int temp_width = imgs[imgId].size().width;
 		int temp_height = imgs[imgId].size().height;
-		printf("height%d,temp_height%d\n",height,temp_height);
 
 		for (int j = 0; j < height - temp_height; j++) {
 			for (int i = 0; i < width - temp_width; i++) {
@@ -317,6 +429,10 @@ int check_array_value4[2][3] = { {0,0,0},{0,0,0} };//中途半端
 int KEYs[9][2] = { {VK_LEFT},{VK_UP},{VK_RIGHT},{VK_DOWN},{0},{VK_LEFT,VK_UP},{VK_LEFT,VK_DOWN} ,{VK_RIGHT,VK_UP},{VK_RIGHT,VK_DOWN} };
 
 
+int before_life = -1;
+int before_score = 0;
+
+
 void step(int action, unsigned char* capture_img,int* reward,int* life,int* done) {
 
 	life[0] = reward[0] = done[0] = 0;
@@ -324,16 +440,24 @@ void step(int action, unsigned char* capture_img,int* reward,int* life,int* done
 	capture_life_board(life_board);
 	int height = 144 * 3;
 	int width = 3;
-	*reward += 1;
+
+
 
 	for (int i = 0; i < 9; i++) {
 		*life += life_board[8 * 144 * 3 + 16 * i + 2] / 128;
 	}
+//	if (before_life != *life &&before_life != -1)*reward = -1;
+//	before_life = *life;
+
+	int score = get_score();
+	*reward = score - before_score;
+
+
 	capture_foreground(capture_img);
 
 	int shape[3] = {448, 384, 3};
 	cv::Mat img(448, 384, CV_8UC3, capture_img);
-
+	
 	cv::flip(img, img, 0);
 	if (*life == 0) {
 		int count = 0;
@@ -401,20 +525,17 @@ void step(int action, unsigned char* capture_img,int* reward,int* life,int* done
 	cv::Mat black(448,384,CV_8UC3,cv::Scalar(0));
 	cv::Mat affine= (cv::Mat_<double>(2, 3) << 1.0, 0.0, paste_x, 0.0, 1.0, paste_y);
 	cv::warpAffine(rect, black, affine, black.size(), cv::INTER_LINEAR, cv::BORDER_TRANSPARENT);
-	cv::resize(black,black,cv::Size(), 384.0 / img.cols, 448.0 / img.cols);
 	cv::imshow("xxx", black);
+	cv::waitKey(1);
 
 	
 		for (int i = 0; i < 448 * 384 * 3; i++)
-		capture_img[i] = black.data[i];
+			capture_img[i] = black.data[i];*/
 
 
 
 	//imgから四角形を切り出す、黒背景の画像に貼る
 
-
-
-	cv::resize(img, img, cv::Size(), 84.0 / img.cols, 84.0 / img.cols);*/
 
 	keybd_event('Z', 0, 0, 0);
 	for (int i = 0; i < 4; i++)

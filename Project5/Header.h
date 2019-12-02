@@ -18,3 +18,5 @@ extern "C" CAP_API void capture_life_board(unsigned char* capture_img);
 extern "C" CAP_API void step(int action, unsigned char* capture_img, int* reward, int* life, int* done);
 extern "C" CAP_API int mytemplatematch(unsigned char* capture_img, int* loc_x, int* loc_y);
 extern "C" CAP_API int templatematch(unsigned char* capture_img, int* loc_x, int* loc_y);
+extern "C" CAP_API void capture_score_board(unsigned char* capture_img);
+extern "C" CAP_API int get_score();

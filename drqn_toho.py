@@ -14,7 +14,7 @@ import cv2
 from keras.layers.convolutional import Conv2D
 from keras.optimizers import Adam
 from keras.layers import Dense, Flatten, LSTM, TimeDistributed,Input,MaxPooling2D,GlobalAveragePooling2D,BatchNormalization,Activation,Add
-from keras.optimizers import RMSprop
+from keras.optimizers import RMSprop,Adam
 from keras.models import Sequential,Model
 from keras.utils import Sequence
 from keras.layers import Dense, Flatten, LSTM, TimeDistributed
@@ -65,18 +65,18 @@ class DRQNAgent:
 
         self.epsilon_start, self.epsilon_end = 1.0, 0.1
 
-        self.exploration_steps = 10000.
+        self.exploration_steps = 100000.
 
         self.epsilon_decay_step = (self.epsilon_start - self.epsilon_end) \
                                             / self.exploration_steps
 
-        self.batch_size = 1
+        self.batch_size = 32
 
-        self.train_start = 5000#50000
+        self.train_start = 50000#50000
 
         self.update_target_rate = 1000
 
-        self.discount_factor = 0.99
+        self.discount_factor = 0.9
 
         # 리플레이 메모리, 최대 크기 400000
 
@@ -86,9 +86,9 @@ class DRQNAgent:
 
         # 모델과 타겟모델을 생성하고 타겟모델 초기화 및 gpu에 모델 할당
 
-        self.model = self.build_model2()
+        self.model = self.build_model3()
         #self.model = multi_gpu_model(self.model, gpus = 4)
-        self.target_model = self.build_model2()
+        self.target_model = self.build_model3()
         #self.target_model = multi_gpu_model(self.target_model, gpus = 4)
 
         self.update_target_model()
@@ -166,7 +166,7 @@ class DRQNAgent:
         loss2 = K.mean(0.5 * K.square(quadratic_part2) + linear_part2)
 
 
-        optimizer = RMSprop(lr=0.00025, epsilon=0.01)
+        optimizer = Adam(lr=0.00025, epsilon=0.01)
 
         updates = optimizer.get_updates(self.model.trainable_weights, [],    [loss,loss2])
         train = K.function([self.model.input, a,a2, y], [loss,loss2], updates=updates)
@@ -217,7 +217,7 @@ class DRQNAgent:
 
     def build_model2(self,width=84,height=84,ch=3):
         action_size=[9,2]
-        input=Input(shape=(10,width,height,ch))
+        input=Input(shape=(4,width,height,ch))
 
         x=TimeDistributed(Conv2D(64, (6, 6), strides=(2, 2), activation='relu'))(input)
         x=TimeDistributed(MaxPooling2D(2))(x)
@@ -229,7 +229,6 @@ class DRQNAgent:
         x=TimeDistributed(GlobalAveragePooling2D())(x)
         x=TimeDistributed(Flatten())(x)
         x=Flatten()(x)
-#        x=LSTM(512)(x)
         x=Dense(128, activation='relu')(x)
         out1=Dense(action_size[0],name='out1')(x)
         out2=Dense(action_size[1],name='out2')(x)
@@ -237,6 +236,35 @@ class DRQNAgent:
         model.summary()
         return model
 
+
+    def resblock2(self,input,ch1,strides=2):
+        x = BatchNormalization()(input)
+        x = Activation("relu")(x)
+        x=Conv2D(ch1, (3, 3), strides=(strides, strides),padding='same')(x)
+        x = BatchNormalization()(x)
+        x = Activation("relu")(x)
+        x=  Conv2D(ch1, (3, 3), strides=(1, 1),padding='same')(x)
+        if not x.shape==input.shape:
+            input=Conv2D(ch1, (3, 3), strides=(strides, strides),padding='same')(input)
+        return Add()([input, x])
+
+    def build_model3(self,width=84,height=84,ch=4):
+        action_size=[9,2]
+        input=Input(shape=(width,height,4))
+
+        x=Conv2D(64, (6, 6), strides=(2, 2), activation='relu')(input)
+        x=MaxPooling2D(2)(x)
+
+        x=self.resblock2(x,64)
+        x=self.resblock2(x,128)
+        x=self.resblock2(x,256)
+        x=GlobalAveragePooling2D()(x)
+        x=Dense(128, activation='relu')(x)
+        out1=Dense(action_size[0],name='out1')(x)
+        out2=Dense(action_size[1],name='out2')(x)
+        model = Model(inputs=input, outputs=[out1,out2])
+        model.summary()
+        return model
 
 
 
@@ -282,9 +310,9 @@ class DRQNAgent:
 
         mini_batch = random.sample(self.memory, self.batch_size)
 
-        history = np.zeros((self.batch_size, 10, 84, 84, 3))
+        history = np.zeros((self.batch_size,  84, 84, 4))
 
-        next_history = np.zeros((self.batch_size, 10, 84, 84, 3))
+        next_history = np.zeros((self.batch_size,  84, 84, 4))
 
         target = np.zeros((self.batch_size,))
 
@@ -317,7 +345,7 @@ class DRQNAgent:
                 target[i] = reward[i]
 
             else:
-                target[i] = reward[i] + self.discount_factor * np.amax(target_value[i])
+                target[i] = reward[i] + self.discount_factor * np.amax(target_value[0][i])
 
 
         loss = self.optimizer([history, [action[0][0]],[action[0][1]], target])
@@ -388,7 +416,7 @@ if __name__ == "__main__":
 
     # 환경과 DRQN 에이전트 생성
 
-    env = toho_env(ch=3)
+    env = toho_env(ch=1)
 
     agent = DRQNAgent(action_size=[9,2])
 
@@ -406,7 +434,7 @@ if __name__ == "__main__":
 
 
 
-        step, score, start_life = 0, 0, 2
+        step, score, start_life = 0, 0, 5
 
         observe = env.reset(isfirst)
         isfirst=False
@@ -422,13 +450,12 @@ if __name__ == "__main__":
 
         state = pre_processing(observe)
 
-        state = state.reshape( 84, 84, 3 )
+        state = state.reshape( 84, 84, 1 )
 
-        history = np.stack(( state, state, state, state, state,
-                            state, state, state, state, state ), axis=0)
+        history = np.stack(( state, state, state, state ), axis=0)
                     #( 10, 84, 84, 1 )
 
-        history = np.reshape([history], ( 1, 10, 84, 84, 3 ))
+        history = np.reshape([history], ( 1, 84, 84, 4 ))
 
 
         train_num=0
@@ -465,13 +492,14 @@ if __name__ == "__main__":
 
             next_state = pre_processing(observe)
 
-            next_state = next_state.reshape( 1, 84, 84, 3 )
+            next_state = next_state.reshape( 84, 84, 1 )
 
-            next_history = next_state.reshape( 1, 1, 84, 84, 3 )
+            next_history = next_state.reshape( 1, 84, 84, 1 )
+            print(history[:,:,:,:3].shape,next_history.shape)
 
-            next_history = np.append(next_history, history[:, :9 , :, :, :], axis=1)
+            next_history = np.append(next_history, history[:, :, :, :3], axis=3)
 
-            next_history = np.reshape([next_history],( 1, 10, 84, 84, 3 ))
+            next_history = np.reshape([next_history],( 1, 84, 84, 4 ))
 
 
             agent.avg_q_max += np.amax(
@@ -490,9 +518,9 @@ if __name__ == "__main__":
 
 
 
-            if len(agent.memory) >= 10:#agent.train_start:
+            if len(agent.memory) >= 100:#agent.train_start:
+                train_num+=1
 
-                agent.train_model()
 
 
 
@@ -520,7 +548,11 @@ if __name__ == "__main__":
 
             if done:
 
+                print(score)
+
                 # 각 에피소드 당 학습 정보를 기록
+                for i in range(train_num):
+                    agent.train_model()
 
                 if global_step > agent.train_start:
 
