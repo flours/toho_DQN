@@ -10,6 +10,7 @@ atari breakout drqn
 import numpy as np
 import keras
 import cv2
+import time
 
 from keras.layers.convolutional import Conv2D
 from keras.optimizers import Adam
@@ -438,6 +439,7 @@ if __name__ == "__main__":
 
         observe = env.reset(isfirst)
         isfirst=False
+        starttime=time.time()
 
 
 
@@ -473,7 +475,6 @@ if __name__ == "__main__":
             # 바로 전 4개의 상태로 행동을 선택
 
             action = agent.get_action(history)
-            print(action)
 
 
 
@@ -495,7 +496,6 @@ if __name__ == "__main__":
             next_state = next_state.reshape( 84, 84, 1 )
 
             next_history = next_state.reshape( 1, 84, 84, 1 )
-            print(history[:,:,:,:3].shape,next_history.shape)
 
             next_history = np.append(next_history, history[:, :, :, :3], axis=3)
 
@@ -547,8 +547,7 @@ if __name__ == "__main__":
 
 
             if done:
-
-                print(score)
+                endtime=time.time()
 
                 # 각 에피소드 당 학습 정보를 기록
                 for i in range(train_num):
@@ -574,7 +573,7 @@ if __name__ == "__main__":
 
 
 
-                print("episode:", e, "  score:", score, "  memory length:",
+                print("episode:", e, "  network score:", score, "  memory length:",
 
                       len(agent.memory), "  epsilon:", agent.epsilon,
 
@@ -582,7 +581,10 @@ if __name__ == "__main__":
 
                       agent.avg_q_max / float(step), "  average loss:",
 
-                      agent.avg_loss / float(step))
+                      agent.avg_loss / float(step),
+                      "game score:",env.libc.get_score(),
+                      "time:",(endtime-starttime)
+                      )
 
 
 
@@ -590,8 +592,8 @@ if __name__ == "__main__":
 
         # 1000 에피소드마다 모델 저장
 
-        if e % 1000 == 0:
+        if e % 100 == 0:
             import time
             now=time.time()
 
-            agent.model.save_weights("./save_model/breakout_drqn15.h5"+str(now))
+            agent.model.save_weights("./save_model/breakout_drqn15.h5"+str(now)+'episode'+str(e))
