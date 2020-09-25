@@ -58,6 +58,8 @@ class toho_env:
         self.libc.capture_score_board(self.score_board_arr_c)
         image=np.ctypeslib.as_array(self.score_board_arr_c).reshape(16,144,3)
         return image
+    def get_score(self):
+        return self.libc.get_score()
 
     def get_life_board(self):
         self.libc.capture_life_board(self.life_board_arr_c)
